@@ -9,6 +9,7 @@ import genesis as gs
 import genesis.utils.geom as gu
 from genesis.repr_base import RBC
 
+from .event_simulator import EventSimulator
 
 class Camera(RBC):
     """
@@ -102,6 +103,10 @@ class Camera(RBC):
         self._follow_smoothing = None
         self._follow_fix_orientation = None
 
+        self._evt_sim = EventSimulator(res[0], res[1])
+        self._t = self._visualizer._t
+        self._evts = None
+
         if self._model not in ["pinhole", "thinlens"]:
             gs.raise_exception(f"Invalid camera model: {self._model}")
 
@@ -146,7 +151,7 @@ class Camera(RBC):
         self.set_pose(transform=transform)
 
     @gs.assert_built
-    def render(self, rgb=True, depth=False, segmentation=False, colorize_seg=False, normal=False):
+    def render(self, rgb=True, depth=False, segmentation=False, colorize_seg=False, normal=False, event=False):
         """
         Render the camera view. Note that the segmentation mask can be colorized, and if not colorized, it will store an object index in each pixel based on the segmentation level specified in `VisOptions.segmentation_level`. For example, if `segmentation_level='link'`, the segmentation mask will store `link_idx`, which can then be used to retrieve the actual link objects using `scene.rigid_solver.links[link_idx]`.
         If `env_separate_rigid` in `VisOptions` is set to True, each component will return a stack of images, with the number of images equal to `len(rendered_envs_idx)`.
@@ -163,6 +168,8 @@ class Camera(RBC):
             If True, the segmentation mask will be colorized.
         normal : bool, optional
             Whether to render the surface normal.
+        event: bool, optional
+            Whether to render the event frame.
 
         Returns
         -------
@@ -174,12 +181,14 @@ class Camera(RBC):
             The rendered segmentation mask(s).
         normal_arr : np.ndarray
             The rendered surface normal(s).
+        event_arr : np.ndarray
+            The rendered event image(s)
         """
 
         if (rgb or depth or segmentation or normal) is False:
             gs.raise_exception("Nothing to render.")
 
-        rgb_arr, depth_arr, seg_idxc_arr, seg_arr, normal_arr = None, None, None, None, None
+        rgb_arr, depth_arr, seg_idxc_arr, seg_arr, normal_arr, event_arr = None, None, None, None, None, None
 
         if self._followed_entity is not None:
             self.update_following()
@@ -215,6 +224,14 @@ class Camera(RBC):
                 seg_arr = seg_color_arr
             else:
                 seg_arr = seg_idx_arr
+
+        if rgb_arr is not None:
+            gray = cv2.cvtColor(rgb_arr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            gray = cv2.add(gray, 0.001)
+            self._t = self._visualizer._t
+            event_arr, self._evts = self._evt_sim.image_callback(gray, self._t)
+            if event_arr is not None:
+                event_arr = event_arr.reshape(rgb_arr.shape[:2])
 
         # succeed rendering, and display image
         if self._GUI and self._visualizer.connected_to_display:
@@ -254,12 +271,24 @@ class Camera(RBC):
 
                 cv2.imshow(f"{title + other_env} [Normal]", normal_img)
 
+            if event:
+                evt_img = np.zeros(rgb_arr.shape, dtype=np.uint8)
+                if event_arr is not None:
+                    evt_img[:, :, 0] = np.clip(event_arr, 0, 1) * 255
+                    evt_img[:, :, 2] = np.clip(event_arr, -1, 0) * -255
+
+                cv2.imshow(f"{title + other_env} [Event]", evt_img)
+
             cv2.waitKey(1)
 
         if self._in_recording and rgb_arr is not None:
             self._recorded_imgs.append(rgb_arr)
 
-        return rgb_arr, depth_arr, seg_arr, normal_arr
+        return rgb_arr, depth_arr, seg_arr, normal_arr, event_arr
+
+    @gs.assert_built
+    def get_events(self):
+        return self._evts
 
     @gs.assert_built
     def render_pointcloud(self, world_frame=True):
