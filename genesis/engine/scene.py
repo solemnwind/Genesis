@@ -455,6 +455,7 @@ class Scene(RBC):
         GUI=False,
         spp=256,
         denoise=True,
+        event_delta_threshold=0.05
     ):
         """
         Add a camera to the scene. The camera model can be either 'pinhole' or 'thinlens'. The 'pinhole' model is a simple camera model that captures light rays from a single point in space. The 'thinlens' model is a more complex camera model that simulates a lens with a finite aperture size, allowing for depth of field effects. When 'pinhole' is used, the `aperture` and `focal_len` parameters are ignored.
@@ -490,7 +491,7 @@ class Scene(RBC):
             The created camera object.
         """
 
-        return self._visualizer.add_camera(res, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise)
+        return self._visualizer.add_camera(res, pos, lookat, up, model, fov, aperture, focus_dist, GUI, spp, denoise, event_delta_threshold)
 
     @gs.assert_unbuilt
     def add_emitter(

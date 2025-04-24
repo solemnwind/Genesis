@@ -1,6 +1,7 @@
 import inspect
 import os
 import time
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -70,6 +71,7 @@ class Camera(RBC):
         near=0.05,
         far=100.0,
         transform=None,
+        event_delta_threshold=0.05
     ):
         self._idx = idx
         self._uid = gs.UID()
@@ -103,7 +105,16 @@ class Camera(RBC):
         self._follow_smoothing = None
         self._follow_fix_orientation = None
 
-        self._evt_sim = EventSimulator(res[0], res[1])
+        self._event_delta_threshold = event_delta_threshold
+        self._evt_sim = EventSimulator(res[0], res[1], config=SimpleNamespace(
+            **{
+                "contrast_thresholds": (0.01, 0.01),
+                "sigma_contrast_thresholds": (0.0, 0.0),
+                "refractory_period_ns": 1000,
+                "max_events_per_frame": 200000,
+                "delta_L_threshold": self._event_delta_threshold
+            }
+        ))
         self._t = self._visualizer._t
         self._evts = None
 
@@ -185,7 +196,7 @@ class Camera(RBC):
             The rendered event image(s)
         """
 
-        if (rgb or depth or segmentation or normal) is False:
+        if (rgb or depth or segmentation or normal or event) is False:
             gs.raise_exception("Nothing to render.")
 
         rgb_arr, depth_arr, seg_idxc_arr, seg_arr, normal_arr, event_arr = None, None, None, None, None, None
@@ -194,7 +205,7 @@ class Camera(RBC):
             self.update_following()
 
         if self._raytracer is not None:
-            if rgb:
+            if rgb or event:
                 self._raytracer.update_scene()
                 rgb_arr = self._raytracer.render_camera(self)
 
@@ -210,7 +221,7 @@ class Camera(RBC):
         elif self._rasterizer is not None:
             self._rasterizer.update_scene()
             rgb_arr, depth_arr, seg_idxc_arr, normal_arr = self._rasterizer.render_camera(
-                self, rgb, depth, segmentation, normal=normal
+                self, rgb or event, depth, segmentation, normal=normal
             )
 
         else:

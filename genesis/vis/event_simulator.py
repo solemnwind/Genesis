@@ -7,22 +7,20 @@ EVENT_TYPE = np.dtype(
     [("timestamp", "f8"), ("x", "u2"), ("y", "u2"), ("polarity", "b")], align=True
 )
 
-TOL = 0.5
-MINIMUM_CONTRAST_THRESHOLD = 0.01
-
 CONFIG = SimpleNamespace(
     **{
         "contrast_thresholds": (0.01, 0.01),
         "sigma_contrast_thresholds": (0.0, 0.0),
         "refractory_period_ns": 1000,
         "max_events_per_frame": 200000,
+        "delta_L_threshold": 0.05
     }
 )
 
 @njit(parallel=True)
 def esim(x_end, current_image, previous_image, delta_time, crossings,
                  last_time, output_events, spikes, refractory_period_ns,
-                 max_events_per_frame, n_pix_row):
+                 max_events_per_frame, n_pix_row, TOL=0.05):
     count = 0
     max_spikes = int(delta_time / (refractory_period_ns * 1e-3))
     
@@ -155,6 +153,7 @@ class EventSimulator:
             config.refractory_period_ns,
             config.max_events_per_frame,
             self.W,
+            config.delta_L_threshold
         )
 
         np.copyto(self.last_image, self.current_image)
